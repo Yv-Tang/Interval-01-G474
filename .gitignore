@@ -1,0 +1,35 @@
+# Whitelist-style .gitignore
+# Default: ignore everything, then use negation (!) to whitelist important files/dirs
+
+# Ignore everything
+*
+
+# Keep this .gitignore and repo metadata
+!.gitignore
+!.gitattributes
+
+# Keep editor/workspace settings
+!.vscode/
+!.vscode/**
+!.settings
+!.settings/**
+
+# Project source and config (whitelist)
+!Core/
+!Core/**
+!Drivers/
+!Drivers/**
+!CMakeLists.txt
+!CMakePresets.json
+!*.ioc
+!*.s
+!*.ld
+
+# Keep important root files
+!README.md
+
+# Keep other project-specific files as needed (add patterns below)
+
+# Still ignore build outputs and scratch files
+build/
+mx.scratch
