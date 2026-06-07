@@ -28,7 +28,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdio.h"
+#include "controller.h"
+#include "inverter.h"
+//#include "oled_buffer.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,6 +41,38 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+// 实际值计算公式 signal = (ADC * ADC_resolution - ADC_CHx_bias) * ADC_CHx_ratio
+#define ADC_resolution 3.3/4096	// 每位对应电压
+#define ADC_CH1_ratio 37.7931f	// ADC电压每伏对应实际电压
+#define ADC_CH1_bias 1.6766f		// ADC电压偏置
+#define ADC_CH2_ratio 4.01193f
+#define ADC_CH2_bias 1.4863f
+#define ADC_CH3_ratio 1.0f
+#define ADC_CH3_bias 1.68f
+#define ADC_CH4_ratio 1.0f
+#define ADC_CH4_bias 1.68f
+// 交流电压使用1通道
+#define AC_U ADC_voltage[0]
+// 电感电流使用2通道
+#define L_I ADC_voltage[1]
+// 直流电压使用3通道
+#define DC_U ADC_voltage[2]
+/* 图腾柱拓扑
+ *					----------------------Vdc+
+ *					|		|		|
+ *					Q1		Q3		|
+ * Vac+ ----UUU-----|		|		|
+ * 					|		|		=
+ * Vac- ----UUU-------------|		|
+ * 					Q2		Q4		|
+ * 					|		|		|
+ * 					----------------------Vdc-
+ * Q1Q2慢管，Q3Q4快管
+ * Q1Q2连接TIM1_CH1_CH1N
+ * 		Vac>0.1V(0.1V作为软开关),duty1=1,
+ * Q3Q4连接TIM1_CH2_CH2N
+ *
+*/
 
 /* USER CODE END PD */
 
@@ -49,6 +84,20 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+
+// DC->AC 电压电流环PI结构体
+extern PID_Struct ac_U_PI;
+extern PID_Struct ac_I_PI;
+extern PID_Struct ac_V_PI;
+
+// 采样ADC值
+uint16_t ADC_value[4] = {0}; // {ac_U_value, ac_I_value, dc_U_value, dc_I_value}
+
+// 转换电压值
+float ADC_voltage[4] = {0}; // {ac_U_value, ac_I_value, dc_U_value, dc_I_value}
+
+// 中断标志位
+uint16_t adc_conv_complete_flag = 0;
 
 /* USER CODE END PV */
 
@@ -102,12 +151,40 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  Inverter_Init();
+
+  // 开启定时器TIM1中断模式
+  HAL_TIM_Base_Start_IT(&htim1);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
+  // ADC校准
+  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
+  // 开启DMA自动采样
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)&ADC_value, 4);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+      if(adc_conv_complete_flag == 1)
+      {
+          adc_conv_complete_flag = 0;
+
+    	  // 双环 电压环 PI + 电流环 PR
+          Inverter_Loop_With_ALL(AC_U, L_I, DC_U);
+
+    	  // 单环 电压环 PI
+    	  // Inverter_Loop_With_Voltage(AC_U);
+
+    	  // 开环
+    	  // Inverter_Loop_With_None();
+
+      }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
